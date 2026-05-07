@@ -1,4 +1,5 @@
 using Serilog;
+using XmlEmailSender.API.Middleware;
 using XmlEmailSender.Application;
 using XmlEmailSender.Infrastructure;
 using XmlEmailSender.Infrastructure.Persistence.Schema;
@@ -23,6 +24,13 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Permite hasta 50 MB combinados de archivos en multipart/form-data
+// (útil al subir varios XMLs grandes a la vez).
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(opts =>
+{
+    opts.MultipartBodyLengthLimit = 50L * 1024 * 1024;
+});
 
 // CORS — abierto en dev, restringido en prod.
 builder.Services.AddCors(options =>
@@ -58,6 +66,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Captura excepciones no controladas y devuelve ProblemDetails (RFC 7807).
+// Va antes de cualquier middleware que pueda lanzar.
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();

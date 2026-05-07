@@ -451,7 +451,7 @@ Por defecto los logs van a la consola y a archivos rotados diariamente en `src/X
 | **2 — Domain + Parser SRI + Dapper** | ✅ Completada | Entidades, ValueObjects, parser SRI con Strategy, persistencia Dapper con schema runner, tests end-to-end. |
 | **3 — RIDE PDF + QR** | ✅ Completada | Plantillas QuestPDF para Factura/NotaCrédito/Retención, código QR con URL del SRI, Factory Pattern, IVA dinámico por bucket. |
 | **4 — CQRS + envío de correo** | ✅ Completada | Commands/Queries con MediatR, pipeline behaviors (Logging + Validation + UoW), MailKit con cifrado de password SMTP via DataProtection. |
-| **5 — Controllers REST + UI completa** | 🔜 | Endpoints (`/documents`, `/emails`, `/smtp-config`), upload con react-dropzone, tabla de historial, formulario SMTP, dashboard con Recharts. |
+| **5 — Controllers REST + UI completa** | ✅ Completada | Endpoints REST (`/api/documents`, `/api/smtp-config`), upload múltiple con react-dropzone, tabla de historial con modal de detalle/reenvío, CRUD SMTP, dashboard con Recharts. ProblemDetails (RFC 7807) en errores. |
 | **6 — Deploy Linux** | 🔜 | Ubuntu 22.04, Nginx + Let's Encrypt, systemd para correr la API como servicio. |
 
 ---
