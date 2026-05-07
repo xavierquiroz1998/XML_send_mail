@@ -46,15 +46,23 @@ internal sealed class WithholdingXmlParser : IDocumentTypeParser
             Address: FindCampoAdicional(root, "direccion", "dirección"));
 
         // Las retenciones no tienen "subtotal/impuestos/total" como facturas:
-        // se suma el valorRetenido de cada impuesto.
+        // se suma el valorRetenido de cada impuesto. Para el RIDE preservamos
+        // un bucket por código de retención (`codigoRetencion`) con su porcentaje.
+        var taxBreakdown = new List<TaxBucket>();
         var totalRetenido = 0m;
         var impuestos = root.Descendants()
             .FirstOrDefault(e => e.Name.LocalName.Equals("impuestos", StringComparison.OrdinalIgnoreCase));
         if (impuestos != null)
         {
-            totalRetenido = impuestos.Descendants()
+            var buckets = impuestos.Descendants()
                 .Where(e => e.Name.LocalName.Equals("impuesto", StringComparison.OrdinalIgnoreCase))
-                .Sum(i => ParseDecimalSafe(GetElementValue(i, "valorRetenido")));
+                .GroupBy(i => GetElementValue(i, "codigoRetencion"))
+                .Select(g => new TaxBucket(
+                    CodigoPorcentaje: g.Key,
+                    BaseImponible: g.Sum(x => ParseDecimalSafe(GetElementValue(x, "baseImponible"))),
+                    Valor: g.Sum(x => ParseDecimalSafe(GetElementValue(x, "valorRetenido")))));
+            taxBreakdown.AddRange(buckets);
+            totalRetenido = taxBreakdown.Sum(b => b.Valor);
         }
 
         return Result.Success(new ElectronicDocument(
@@ -66,6 +74,7 @@ internal sealed class WithholdingXmlParser : IDocumentTypeParser
             taxes: totalRetenido,
             total: totalRetenido,
             originalXml,
-            lines: Array.Empty<DocumentLine>()));
+            lines: Array.Empty<DocumentLine>(),
+            taxBreakdown: taxBreakdown));
     }
 }

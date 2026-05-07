@@ -45,13 +45,22 @@ internal sealed class CreditNoteXmlParser : IDocumentTypeParser
         var subtotal = ParseDecimalSafe(GetElementValue(infoNota, "totalSinImpuestos"));
         var total = ParseDecimalSafe(GetElementValue(infoNota, "valorModificacion"));
 
+        var taxBreakdown = new List<TaxBucket>();
         var taxes = 0m;
         var tot = root.Descendants()
             .FirstOrDefault(e => e.Name.LocalName.Equals("totalConImpuestos", StringComparison.OrdinalIgnoreCase));
         if (tot != null)
-            taxes = tot.Descendants()
+        {
+            var buckets = tot.Descendants()
                 .Where(e => e.Name.LocalName.Equals("totalImpuesto", StringComparison.OrdinalIgnoreCase))
-                .Sum(t => ParseDecimalSafe(GetElementValue(t, "valor")));
+                .GroupBy(t => GetElementValue(t, "codigoPorcentaje"))
+                .Select(g => new TaxBucket(
+                    CodigoPorcentaje: g.Key,
+                    BaseImponible: g.Sum(x => ParseDecimalSafe(GetElementValue(x, "baseImponible"))),
+                    Valor: g.Sum(x => ParseDecimalSafe(GetElementValue(x, "valor")))));
+            taxBreakdown.AddRange(buckets);
+            taxes = taxBreakdown.Sum(b => b.Valor);
+        }
 
         var lines = new List<DocumentLine>();
         var detalles = root.Descendants()
@@ -75,6 +84,7 @@ internal sealed class CreditNoteXmlParser : IDocumentTypeParser
             DocumentType, accessKeyResult.Value,
             ExtractDocumentNumber(infoTributaria),
             ParseSriDate(GetElementValue(infoNota, "fechaEmision")),
-            ambiente, issuer, receiver, subtotal, taxes, total, originalXml, lines));
+            ambiente, issuer, receiver, subtotal, taxes, total, originalXml, lines,
+            taxBreakdown: taxBreakdown));
     }
 }

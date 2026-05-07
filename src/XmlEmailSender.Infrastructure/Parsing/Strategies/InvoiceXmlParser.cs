@@ -52,14 +52,22 @@ internal sealed class InvoiceXmlParser : IDocumentTypeParser
         var subtotal = ParseDecimalSafe(GetElementValue(infoFactura, "totalSinImpuestos"));
         var total = ParseDecimalSafe(GetElementValue(infoFactura, "importeTotal"));
 
+        var taxBreakdown = new List<TaxBucket>();
         var taxes = 0m;
         var totalConImpuestos = root.Descendants()
             .FirstOrDefault(e => e.Name.LocalName.Equals("totalConImpuestos", StringComparison.OrdinalIgnoreCase));
         if (totalConImpuestos != null)
         {
-            taxes = totalConImpuestos.Descendants()
+            // Agrupamos por codigoPorcentaje para preservar IVA 0% / 12% / 15% / etc. por separado.
+            var buckets = totalConImpuestos.Descendants()
                 .Where(e => e.Name.LocalName.Equals("totalImpuesto", StringComparison.OrdinalIgnoreCase))
-                .Sum(t => ParseDecimalSafe(GetElementValue(t, "valor")));
+                .GroupBy(t => GetElementValue(t, "codigoPorcentaje"))
+                .Select(g => new TaxBucket(
+                    CodigoPorcentaje: g.Key,
+                    BaseImponible: g.Sum(x => ParseDecimalSafe(GetElementValue(x, "baseImponible"))),
+                    Valor: g.Sum(x => ParseDecimalSafe(GetElementValue(x, "valor")))));
+            taxBreakdown.AddRange(buckets);
+            taxes = taxBreakdown.Sum(b => b.Valor);
         }
 
         var lines = new List<DocumentLine>();
@@ -92,7 +100,8 @@ internal sealed class InvoiceXmlParser : IDocumentTypeParser
             taxes: taxes,
             total: total,
             originalXml: originalXml,
-            lines: lines);
+            lines: lines,
+            taxBreakdown: taxBreakdown);
 
         return Result.Success(document);
     }

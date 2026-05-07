@@ -1,9 +1,15 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using QuestPDF;
+using QuestPDF.Infrastructure;
 using XmlEmailSender.Application.Abstractions.Parsing;
+using XmlEmailSender.Application.Abstractions.Pdf;
 using XmlEmailSender.Domain.Repositories;
 using XmlEmailSender.Infrastructure.Parsing;
 using XmlEmailSender.Infrastructure.Parsing.Strategies;
+using XmlEmailSender.Infrastructure.Pdf;
+using XmlEmailSender.Infrastructure.Pdf.Qr;
+using XmlEmailSender.Infrastructure.Pdf.Templates;
 using XmlEmailSender.Infrastructure.Persistence;
 using XmlEmailSender.Infrastructure.Persistence.Repositories;
 using XmlEmailSender.Infrastructure.Persistence.Schema;
@@ -39,6 +45,20 @@ public static class DependencyInjection
         services.AddSingleton<IDocumentTypeParser, WithholdingXmlParser>();
         services.AddSingleton<IXmlDocumentParser>(sp =>
             new SriXmlDocumentParser(sp.GetServices<IDocumentTypeParser>()));
+
+        // PDF / RIDE
+        // QuestPDF requiere declarar el tipo de licencia antes del primer render.
+        // Community es válida si la facturación anual del usuario es < 1M USD.
+        Settings.License = LicenseType.Community;
+
+        services.Configure<SriUrlOptions>(configuration.GetSection(SriUrlOptions.SectionName));
+        services.AddSingleton<ISriUrlBuilder, SriUrlBuilder>();
+        services.AddSingleton<IQrCodeGenerator, ZxingQrCodeGenerator>();
+        services.AddSingleton<IRideTemplate, InvoiceRideTemplate>();
+        services.AddSingleton<IRideTemplate, CreditNoteRideTemplate>();
+        services.AddSingleton<IRideTemplate, WithholdingRideTemplate>();
+        services.AddSingleton<RideTemplateFactory>();
+        services.AddSingleton<IRideGenerator, QuestPdfRideGenerator>();
 
         return services;
     }

@@ -52,13 +52,31 @@ INSERT INTO ElectronicDocuments (
             document.UpdatedAt
         }, transaction: _uow.Transaction);
 
-        if (document.Lines.Count == 0) return;
-
-        const string insertLine = @"
+        if (document.Lines.Count > 0)
+        {
+            const string insertLine = @"
 INSERT INTO DocumentLines (Id, ElectronicDocumentId, Code, Description, Quantity, UnitPrice, Discount, Subtotal)
 VALUES (@Id, @ElectronicDocumentId, @Code, @Description, @Quantity, @UnitPrice, @Discount, @Subtotal);";
 
-        await _uow.Connection.ExecuteAsync(insertLine, document.Lines, transaction: _uow.Transaction);
+            await _uow.Connection.ExecuteAsync(insertLine, document.Lines, transaction: _uow.Transaction);
+        }
+
+        if (document.TaxBreakdown.Count > 0)
+        {
+            const string insertBucket = @"
+INSERT INTO DocumentTaxBuckets (Id, ElectronicDocumentId, CodigoPorcentaje, BaseImponible, Valor)
+VALUES (@Id, @ElectronicDocumentId, @CodigoPorcentaje, @BaseImponible, @Valor);";
+
+            var bucketRows = document.TaxBreakdown.Select(b => new
+            {
+                Id = Guid.NewGuid(),
+                ElectronicDocumentId = document.Id,
+                b.CodigoPorcentaje,
+                b.BaseImponible,
+                b.Valor
+            });
+            await _uow.Connection.ExecuteAsync(insertBucket, bucketRows, transaction: _uow.Transaction);
+        }
     }
 
     public async Task<ElectronicDocument?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -70,7 +88,8 @@ VALUES (@Id, @ElectronicDocumentId, @Code, @Description, @Quantity, @UnitPrice, 
 
         var lines = await LoadLinesAsync(id);
         var emails = await LoadEmailLogsAsync(id);
-        return Materialize(row, lines, emails);
+        var buckets = await LoadTaxBucketsAsync(id);
+        return Materialize(row, lines, emails, buckets);
     }
 
     public async Task<ElectronicDocument?> GetByAccessKeyAsync(string accessKey, CancellationToken ct = default)
@@ -82,7 +101,8 @@ VALUES (@Id, @ElectronicDocumentId, @Code, @Description, @Quantity, @UnitPrice, 
 
         var lines = await LoadLinesAsync(row.Id);
         var emails = await LoadEmailLogsAsync(row.Id);
-        return Materialize(row, lines, emails);
+        var buckets = await LoadTaxBucketsAsync(row.Id);
+        return Materialize(row, lines, emails, buckets);
     }
 
     public async Task<bool> ExistsByAccessKeyAsync(string accessKey, CancellationToken ct = default)
@@ -104,7 +124,19 @@ VALUES (@Id, @ElectronicDocumentId, @Code, @Description, @Quantity, @UnitPrice, 
         var rows = await _uow.Connection.QueryAsync<DocumentRow>(
             sql, new { Skip = skip, Take = take }, transaction: _uow.Transaction);
 
-        return rows.Select(r => Materialize(r, Array.Empty<DocumentLine>(), Array.Empty<EmailLog>())).ToList();
+        return rows.Select(r => Materialize(
+            r,
+            Array.Empty<DocumentLine>(),
+            Array.Empty<EmailLog>(),
+            Array.Empty<TaxBucket>())).ToList();
+    }
+
+    private async Task<IEnumerable<TaxBucket>> LoadTaxBucketsAsync(Guid documentId)
+    {
+        const string sql = "SELECT CodigoPorcentaje, BaseImponible, Valor FROM DocumentTaxBuckets WHERE ElectronicDocumentId = @Id";
+        var rows = await _uow.Connection.QueryAsync<TaxBucketRow>(
+            sql, new { Id = documentId }, transaction: _uow.Transaction);
+        return rows.Select(r => new TaxBucket(r.CodigoPorcentaje, r.BaseImponible, r.Valor));
     }
 
     private async Task<IEnumerable<DocumentLine>> LoadLinesAsync(Guid documentId)
@@ -136,7 +168,8 @@ VALUES (@Id, @ElectronicDocumentId, @Code, @Description, @Quantity, @UnitPrice, 
     private static ElectronicDocument Materialize(
         DocumentRow row,
         IEnumerable<DocumentLine> lines,
-        IEnumerable<EmailLog> emails)
+        IEnumerable<EmailLog> emails,
+        IEnumerable<TaxBucket> taxBuckets)
     {
         var issuer = new Issuer(
             row.Issuer_Ruc,
@@ -168,7 +201,8 @@ VALUES (@Id, @ElectronicDocumentId, @Code, @Description, @Quantity, @UnitPrice, 
             row.CreatedAt,
             row.UpdatedAt,
             lines,
-            emails);
+            emails,
+            taxBuckets);
     }
 
     // Filas planas que Dapper materializa por convención de nombre de columna.
@@ -222,6 +256,13 @@ VALUES (@Id, @ElectronicDocumentId, @Code, @Description, @Quantity, @UnitPrice, 
         public DateTime? SentAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+    }
+
+    private sealed class TaxBucketRow
+    {
+        public string CodigoPorcentaje { get; set; } = null!;
+        public decimal BaseImponible { get; set; }
+        public decimal Valor { get; set; }
     }
 #pragma warning restore IDE1006
 }

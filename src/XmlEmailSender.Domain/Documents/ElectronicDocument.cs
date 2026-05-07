@@ -23,6 +23,13 @@ public sealed class ElectronicDocument : Entity
     private readonly List<DocumentLine> _lines = new();
     public IReadOnlyCollection<DocumentLine> Lines => _lines.AsReadOnly();
 
+    private readonly List<TaxBucket> _taxBreakdown = new();
+    /// <summary>
+    /// Desglose de impuestos por <c>codigoPorcentaje</c> del SRI.
+    /// Una factura puede combinar IVA 0%, IVA 15%, exento, etc.
+    /// </summary>
+    public IReadOnlyCollection<TaxBucket> TaxBreakdown => _taxBreakdown.AsReadOnly();
+
     private readonly List<EmailLog> _emailLogs = new();
     public IReadOnlyCollection<EmailLog> EmailLogs => _emailLogs.AsReadOnly();
 
@@ -40,7 +47,8 @@ public sealed class ElectronicDocument : Entity
         decimal taxes,
         decimal total,
         string originalXml,
-        IEnumerable<DocumentLine> lines)
+        IEnumerable<DocumentLine> lines,
+        IEnumerable<TaxBucket>? taxBreakdown = null)
     {
         Type = type;
         AccessKey = accessKey;
@@ -58,6 +66,8 @@ public sealed class ElectronicDocument : Entity
             line.AttachTo(Id);
             _lines.Add(line);
         }
+        if (taxBreakdown != null)
+            _taxBreakdown.AddRange(taxBreakdown);
     }
 
     public void RegisterEmailAttempt(EmailLog log) => _emailLogs.Add(log);
@@ -81,7 +91,8 @@ public sealed class ElectronicDocument : Entity
         DateTime createdAt,
         DateTime? updatedAt,
         IEnumerable<DocumentLine> lines,
-        IEnumerable<EmailLog> emailLogs)
+        IEnumerable<EmailLog> emailLogs,
+        IEnumerable<TaxBucket>? taxBreakdown = null)
     {
         var doc = new ElectronicDocument
         {
@@ -102,6 +113,11 @@ public sealed class ElectronicDocument : Entity
         };
         doc._lines.AddRange(lines);
         doc._emailLogs.AddRange(emailLogs);
+        if (taxBreakdown != null)
+            doc._taxBreakdown.AddRange(taxBreakdown);
+
+        // Backward compat: documentos viejos (sin breakdown persistido) que tengan
+        // Taxes != 0 quedarán sin desglose. El RIDE caerá al label genérico "IVA".
         return doc;
     }
 }

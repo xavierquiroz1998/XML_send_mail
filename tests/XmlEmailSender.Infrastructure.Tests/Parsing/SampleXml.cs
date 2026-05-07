@@ -88,4 +88,70 @@ internal static class SampleXml
   {infoAdicional}
 </factura>";
     }
+
+    /// <summary>
+    /// Factura con dos buckets de IVA (0% + 15%) para validar el desglose.
+    /// </summary>
+    public static string MinimalInvoiceWithMixedTaxes(string accessKey)
+    {
+        return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<factura id=""comprobante"" version=""1.1.0"">
+  <infoTributaria>
+    <ambiente>2</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>EMPRESA EJEMPLO S.A.</razonSocial>
+    <ruc>1790012345001</ruc>
+    <claveAcceso>{accessKey}</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>001</ptoEmi>
+    <secuencial>000000999</secuencial>
+    <dirMatriz>Av. Amazonas 123</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>15/05/2026</fechaEmision>
+    <obligadoContabilidad>SI</obligadoContabilidad>
+    <tipoIdentificacionComprador>05</tipoIdentificacionComprador>
+    <razonSocialComprador>Juan Pérez</razonSocialComprador>
+    <identificacionComprador>1712345678</identificacionComprador>
+    <totalSinImpuestos>200.00</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>0</codigoPorcentaje>
+        <baseImponible>100.00</baseImponible>
+        <valor>0.00</valor>
+      </totalImpuesto>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>4</codigoPorcentaje>
+        <baseImponible>100.00</baseImponible>
+        <valor>15.00</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>215.00</importeTotal>
+    <moneda>DOLAR</moneda>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>SKU-A</codigoPrincipal>
+      <descripcion>Producto exento</descripcion>
+      <cantidad>1.00</cantidad>
+      <precioUnitario>100.00</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>100.00</precioTotalSinImpuesto>
+    </detalle>
+    <detalle>
+      <codigoPrincipal>SKU-B</codigoPrincipal>
+      <descripcion>Producto gravado</descripcion>
+      <cantidad>1.00</cantidad>
+      <precioUnitario>100.00</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>100.00</precioTotalSinImpuesto>
+    </detalle>
+  </detalles>
+</factura>";
+    }
 }
