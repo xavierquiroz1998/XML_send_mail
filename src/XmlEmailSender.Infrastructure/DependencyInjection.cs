@@ -1,10 +1,14 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QuestPDF;
 using QuestPDF.Infrastructure;
+using XmlEmailSender.Application.Abstractions.Email;
 using XmlEmailSender.Application.Abstractions.Parsing;
 using XmlEmailSender.Application.Abstractions.Pdf;
+using XmlEmailSender.Application.Abstractions.Security;
 using XmlEmailSender.Domain.Repositories;
+using XmlEmailSender.Infrastructure.Email;
 using XmlEmailSender.Infrastructure.Parsing;
 using XmlEmailSender.Infrastructure.Parsing.Strategies;
 using XmlEmailSender.Infrastructure.Pdf;
@@ -13,6 +17,7 @@ using XmlEmailSender.Infrastructure.Pdf.Templates;
 using XmlEmailSender.Infrastructure.Persistence;
 using XmlEmailSender.Infrastructure.Persistence.Repositories;
 using XmlEmailSender.Infrastructure.Persistence.Schema;
+using XmlEmailSender.Infrastructure.Security;
 
 namespace XmlEmailSender.Infrastructure;
 
@@ -59,6 +64,18 @@ public static class DependencyInjection
         services.AddSingleton<IRideTemplate, WithholdingRideTemplate>();
         services.AddSingleton<RideTemplateFactory>();
         services.AddSingleton<IRideGenerator, QuestPdfRideGenerator>();
+
+        // Seguridad / cifrado SMTP
+        // DataProtection persiste la clave maestra en disco; en Linux se ubica
+        // en ~/.aspnet/DataProtection-Keys de forma automática. Forzamos un
+        // ApplicationName para que keys generadas en distintos hosts del mismo
+        // proyecto sean compatibles si se mueve la base.
+        services.AddDataProtection().SetApplicationName("XmlEmailSender");
+        services.AddSingleton<IPasswordProtector, DataProtectionPasswordProtector>();
+
+        // Email
+        services.AddScoped<ISmtpCredentialsProvider, SmtpCredentialsProvider>();
+        services.AddScoped<IEmailSender, MailKitEmailSender>();
 
         return services;
     }
