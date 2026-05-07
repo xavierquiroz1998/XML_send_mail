@@ -115,12 +115,8 @@ VALUES (@Id, @ElectronicDocumentId, @CodigoPorcentaje, @BaseImponible, @Valor);"
 
     public async Task<IReadOnlyList<ElectronicDocument>> ListAsync(int skip, int take, CancellationToken ct = default)
     {
-        // SQLite usa LIMIT/OFFSET; SQL Server desde 2012 también soporta OFFSET/FETCH (T-SQL).
-        // Mantenemos la query ANSI compatible con ambos.
-        var sql = _uow.Connection.GetType().Name.Contains("Sqlite", StringComparison.OrdinalIgnoreCase)
-            ? "SELECT * FROM ElectronicDocuments ORDER BY IssueDate DESC LIMIT @Take OFFSET @Skip"
-            : "SELECT * FROM ElectronicDocuments ORDER BY IssueDate DESC OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY";
-
+        // SQLite y Postgres comparten la sintaxis LIMIT/OFFSET.
+        const string sql = "SELECT * FROM ElectronicDocuments ORDER BY IssueDate DESC LIMIT @Take OFFSET @Skip";
         var rows = await _uow.Connection.QueryAsync<DocumentRow>(
             sql, new { Skip = skip, Take = take }, transaction: _uow.Transaction);
 

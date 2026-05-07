@@ -31,8 +31,8 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionString 'Default' no configurado.");
 
-        var provider = providerName.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)
-            ? DatabaseProvider.SqlServer
+        var provider = providerName.Equals("Postgres", StringComparison.OrdinalIgnoreCase)
+            ? DatabaseProvider.Postgres
             : DatabaseProvider.Sqlite;
 
         // El DbConnectionFactory registra internamente los Dapper type handlers cuando es SQLite.

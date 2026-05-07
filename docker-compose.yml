@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: xmlemailsender-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: xmlemailsender
+      POSTGRES_USER: ${POSTGRES_USER:-xmlemailsender}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Dev_Passw0rd!}
+    ports:
+      # 5433 en host -> 5432 en contenedor: deja libre el 5432 por si ya tienes
+      # un Postgres nativo instalado como servicio de Windows.
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+volumes:
+  pg_data:

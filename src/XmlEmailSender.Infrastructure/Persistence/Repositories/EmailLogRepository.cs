@@ -68,10 +68,7 @@ WHERE Id = @Id;";
 
     public async Task<IReadOnlyList<EmailLog>> ListAsync(int skip, int take, CancellationToken ct = default)
     {
-        var sql = _uow.Connection.GetType().Name.Contains("Sqlite", StringComparison.OrdinalIgnoreCase)
-            ? "SELECT * FROM EmailLogs ORDER BY CreatedAt DESC LIMIT @Take OFFSET @Skip"
-            : "SELECT * FROM EmailLogs ORDER BY CreatedAt DESC OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY";
-
+        const string sql = "SELECT * FROM EmailLogs ORDER BY CreatedAt DESC LIMIT @Take OFFSET @Skip";
         var rows = await _uow.Connection.QueryAsync<Row>(
             sql, new { Skip = skip, Take = take }, transaction: _uow.Transaction);
         return rows.Select(Map).ToList();

@@ -73,7 +73,7 @@ Clean Architecture con cuatro capas y dependencias siempre apuntando hacia adent
 - **Repository Pattern**: interfaces en `Domain/Repositories`, implementadas con Dapper en `Infrastructure/Persistence/Repositories`.
 - **Strategy Pattern** para parsear cada tipo de comprobante (factura / nota de crédito / retención).
 - **Unit of Work** explícito (Dapper no hace tracking; las transacciones son a mano).
-- **Mini schema runner**: scripts SQL embedidos como recursos `.sqlite.sql` y `.sqlserver.sql`, aplicados al arrancar y registrados en `__schema_migrations`.
+- **Mini schema runner**: scripts SQL embedidos como recursos `.sqlite.sql` y `.postgres.sql`, aplicados al arrancar y registrados en `__schema_migrations`.
 
 ---
 
@@ -112,7 +112,7 @@ Clean Architecture con cuatro capas y dependencias siempre apuntando hacia adent
 ### Infraestructura
 
 - **Dev**: SQLite (archivo local).
-- **Prod**: SQL Server. Ambos providers comparten interfaz (`IDbConnectionFactory`); el provider se elige por configuración.
+- **Prod / dev avanzado**: Postgres (corre en Docker). Ambos providers comparten interfaz (`IDbConnectionFactory`); el provider se elige por configuración.
 - **Deploy futuro** (Fase 6): Ubuntu 22.04 + Nginx (reverse proxy) + Let's Encrypt + systemd.
 
 ---
@@ -145,7 +145,7 @@ XmlEmailSender/
 │   │   │       ├── CreditNoteXmlParser.cs
 │   │   │       └── WithholdingXmlParser.cs
 │   │   └── Persistence/
-│   │       ├── DbConnectionFactory.cs    SQLite o SqlServer según config
+│   │       ├── DbConnectionFactory.cs    SQLite o Postgres según config
 │   │       ├── UnitOfWork.cs             Conexión + transacción explícita (Dapper)
 │   │       ├── Repositories/             Repos Dapper con SQL escrito a mano
 │   │       ├── TypeHandlers/             Guid/DateTime ↔ TEXT para SQLite
@@ -153,7 +153,7 @@ XmlEmailSender/
 │   │           ├── SchemaMigrationRunner.cs
 │   │           └── Scripts/
 │   │               ├── 001_initial.sqlite.sql
-│   │               └── 001_initial.sqlserver.sql
+│   │               └── 001_initial.postgres.sql
 │   │
 │   └── XmlEmailSender.API/             ← ASP.NET Core entry point
 │       ├── Program.cs                    Serilog, CORS, DI, auto-migrate
@@ -200,7 +200,7 @@ XmlEmailSender/
 
 - **DB Browser for SQLite** o **DBeaver** para inspeccionar la base de datos local (`xmlemailsender.db`).
 - **Postman** o **REST Client** (extensión de VS Code) para probar la API; alternativamente usa el archivo `XmlEmailSender.API.http` que viene incluido.
-- **SQL Server / SQL Server Express** si vas a probar el provider de producción.
+- **Docker** (con Docker Compose) si vas a usar Postgres durante el desarrollo (ver sección "Levantar Postgres con Docker").
 
 ---
 
@@ -252,6 +252,44 @@ cd ..
 
 No hay que correr `dotnet ef database update` ni nada parecido — el sistema usa **Dapper + un schema runner propio** que aplica los scripts `.sql` automáticamente al arrancar la API.
 
+Por defecto, la primera ejecución crea un archivo **SQLite** local (`xmlemailsender.db`) — no hace falta instalar ninguna base de datos. Si prefieres correr **Postgres** en Docker para tener un entorno más cercano a producción, ve a la siguiente sección.
+
+### 6. (Opcional) Levantar Postgres con Docker
+
+Si quieres usar Postgres durante el desarrollo, hay un `docker-compose.yml` listo (imagen `postgres:16-alpine`, ~150 MB):
+
+```powershell
+# Crear el archivo de variables locales (no se sube al repo)
+copy .env.example .env
+
+# Levantar Postgres en background
+docker compose up -d db
+
+# Ver el estado del healthcheck (queda "healthy" en ~10 s)
+docker compose ps
+
+# Apagar el contenedor manteniendo los datos
+docker compose stop db
+
+# Apagar y borrar TODO (datos incluidos)
+docker compose down -v
+```
+
+El contenedor expone Postgres en **`localhost:5433`** (mapeado al `5432` del contenedor) con usuario `xmlemailsender`, base `xmlemailsender` y la password definida en `.env` (default `Dev_Passw0rd!`). Los datos persisten en el volumen `pg_data`.
+
+> Usamos el puerto **5433** en el host para no chocar con un Postgres nativo que ya tengas instalado como servicio de Windows. Si quieres el puerto estándar `5432`, edita el mapeo en `docker-compose.yml` y la connection string en `appsettings.Docker.json`.
+
+Para que la API use Postgres en lugar de SQLite, arráncala con el ambiente `Docker`:
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = "Docker"
+dotnet run --project src/XmlEmailSender.API
+```
+
+Esto activa [`appsettings.Docker.json`](src/XmlEmailSender.API/appsettings.Docker.json), que sobrescribe el provider y la connection string. El schema runner detecta el provider y aplica los scripts `*.postgres.sql` correspondientes (`001_initial.postgres.sql`, `002_tax_buckets.postgres.sql`).
+
+> **Nota:** los tests unitarios e integración siguen usando SQLite en archivo temporal (más rápido, sin Docker). Solo el runtime de dev/prod aprovecha Postgres.
+
 ---
 
 ## Cómo correr el proyecto
@@ -287,9 +325,10 @@ curl http://localhost:5099/api/health
 Y se habrá creado el archivo SQLite `src/XmlEmailSender.API/xmlemailsender.db` con las tablas:
 - `ElectronicDocuments`
 - `DocumentLines`
+- `DocumentTaxBuckets` *(desglose por código de IVA)*
 - `EmailLogs`
 - `SmtpConfigurations`
-- `__schema_migrations`
+- `__schema_migrations` *(metadatos del runner)*
 
 ### Terminal 2: Frontend React
 
@@ -356,20 +395,20 @@ Todo se controla desde [src/XmlEmailSender.API/appsettings.json](src/XmlEmailSen
 }
 ```
 
-Para SQL Server:
+Para Postgres:
 
 ```json
 {
   "Database": {
-    "Provider": "SqlServer"
+    "Provider": "Postgres"
   },
   "ConnectionStrings": {
-    "Default": "Server=localhost;Database=XmlEmailSender;Trusted_Connection=True;TrustServerCertificate=True"
+    "Default": "Host=localhost;Port=5433;Database=xmlemailsender;Username=xmlemailsender;Password=Dev_Passw0rd!"
   }
 }
 ```
 
-El schema runner detectará automáticamente que es SQL Server y aplicará el script `001_initial.sqlserver.sql` en lugar del `.sqlite.sql`.
+El schema runner detectará automáticamente que es Postgres y aplicará el script `001_initial.postgres.sql` en lugar del `.sqlite.sql`.
 
 ### CORS (frontend en otro dominio)
 
@@ -410,8 +449,8 @@ Por defecto los logs van a la consola y a archivos rotados diariamente en `src/X
 |---|---|---|
 | **1 — Setup** | ✅ Completada | Solución, proyectos, referencias, NuGet, Program.cs, frontend scaffold. |
 | **2 — Domain + Parser SRI + Dapper** | ✅ Completada | Entidades, ValueObjects, parser SRI con Strategy, persistencia Dapper con schema runner, tests end-to-end. |
-| **3 — RIDE PDF + QR** | ⏳ Próxima | Plantillas QuestPDF para Factura/NotaCrédito/Retención, código QR con URL del SRI, Factory Pattern. |
-| **4 — CQRS + envío de correo** | 🔜 | Commands/Queries con MediatR, Pipeline Behaviors (logging + validación), MailKit con cifrado de password SMTP. |
+| **3 — RIDE PDF + QR** | ✅ Completada | Plantillas QuestPDF para Factura/NotaCrédito/Retención, código QR con URL del SRI, Factory Pattern, IVA dinámico por bucket. |
+| **4 — CQRS + envío de correo** | ✅ Completada | Commands/Queries con MediatR, pipeline behaviors (Logging + Validation + UoW), MailKit con cifrado de password SMTP via DataProtection. |
 | **5 — Controllers REST + UI completa** | 🔜 | Endpoints (`/documents`, `/emails`, `/smtp-config`), upload con react-dropzone, tabla de historial, formulario SMTP, dashboard con Recharts. |
 | **6 — Deploy Linux** | 🔜 | Ubuntu 22.04, Nginx + Let's Encrypt, systemd para correr la API como servicio. |
 

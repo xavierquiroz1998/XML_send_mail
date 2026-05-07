@@ -1,4 +1,3 @@
-using System.Reflection;
 using Dapper;
 using Microsoft.Extensions.Logging;
 
@@ -7,8 +6,10 @@ namespace XmlEmailSender.Infrastructure.Persistence.Schema;
 /// <summary>
 /// Mini-runner de migraciones para Dapper.
 /// - Lee scripts SQL embedidos como recursos (Persistence/Schema/Scripts).
-/// - Filtra por sufijo según provider (.sqlite.sql / .sqlserver.sql).
+/// - Filtra por sufijo según provider (.sqlite.sql / .postgres.sql).
 /// - Aplica los pendientes en orden alfabético y los registra en __schema_migrations.
+/// Postgres y SQLite ejecutan el script completo en una sola llamada (no requieren
+/// batch splitting tipo "GO" de SQL Server).
 /// </summary>
 public sealed class SchemaMigrationRunner
 {
@@ -26,7 +27,7 @@ public sealed class SchemaMigrationRunner
         var providerSuffix = _factory.Provider switch
         {
             DatabaseProvider.Sqlite => ".sqlite.sql",
-            DatabaseProvider.SqlServer => ".sqlserver.sql",
+            DatabaseProvider.Postgres => ".postgres.sql",
             _ => throw new NotSupportedException()
         };
 
@@ -69,18 +70,11 @@ public sealed class SchemaMigrationRunner
             using var tx = conn.BeginTransaction();
             try
             {
-                // Algunos motores (SQL Server) requieren split por GO; SQLite ejecuta todo junto.
-                foreach (var batch in SplitBatches(sql, _factory.Provider))
-                {
-                    if (string.IsNullOrWhiteSpace(batch)) continue;
-                    await conn.ExecuteAsync(batch, transaction: tx);
-                }
-
+                await conn.ExecuteAsync(sql, transaction: tx);
                 await conn.ExecuteAsync(
                     "INSERT INTO __schema_migrations (script_name, applied_at) VALUES (@name, @at)",
                     new { name = scriptName, at = DateTime.UtcNow },
                     transaction: tx);
-
                 tx.Commit();
                 _logger.LogInformation("Migración aplicada: {Script}", scriptName);
             }
@@ -101,42 +95,13 @@ public sealed class SchemaMigrationRunner
                     script_name TEXT PRIMARY KEY,
                     applied_at  TEXT NOT NULL
                   );",
-            DatabaseProvider.SqlServer =>
-                @"IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '__schema_migrations')
-                  BEGIN
-                    CREATE TABLE __schema_migrations (
-                        script_name NVARCHAR(255) NOT NULL PRIMARY KEY,
-                        applied_at  DATETIME2 NOT NULL
-                    );
-                  END",
+            DatabaseProvider.Postgres =>
+                @"CREATE TABLE IF NOT EXISTS __schema_migrations (
+                    script_name VARCHAR(255) PRIMARY KEY,
+                    applied_at  TIMESTAMPTZ NOT NULL
+                  );",
             _ => throw new NotSupportedException()
         };
         await conn.ExecuteAsync(sql);
-    }
-
-    private static IEnumerable<string> SplitBatches(string sql, DatabaseProvider provider)
-    {
-        if (provider != DatabaseProvider.SqlServer)
-        {
-            yield return sql;
-            yield break;
-        }
-
-        // SQL Server: separar por "GO" en líneas independientes.
-        var lines = sql.Replace("\r\n", "\n").Split('\n');
-        var current = new System.Text.StringBuilder();
-        foreach (var line in lines)
-        {
-            if (line.Trim().Equals("GO", StringComparison.OrdinalIgnoreCase))
-            {
-                yield return current.ToString();
-                current.Clear();
-            }
-            else
-            {
-                current.AppendLine(line);
-            }
-        }
-        if (current.Length > 0) yield return current.ToString();
     }
 }

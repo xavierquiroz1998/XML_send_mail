@@ -1,7 +1,7 @@
 using System.Data;
 using Dapper;
 using Microsoft.Data.Sqlite;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using XmlEmailSender.Infrastructure.Persistence.TypeHandlers;
 
 namespace XmlEmailSender.Infrastructure.Persistence;
@@ -22,7 +22,8 @@ internal sealed class DbConnectionFactory : IDbConnectionFactory
 
     /// <summary>
     /// Registra los Dapper type handlers requeridos por SQLite (Guid/DateTime como TEXT).
-    /// Idempotente: usa Interlocked para que múltiples factories no compitan.
+    /// Postgres no necesita: Npgsql mapea uuid y timestamptz nativamente.
+    /// Idempotente vía Interlocked.
     /// </summary>
     private static void EnsureDapperHandlers(DatabaseProvider provider)
     {
@@ -41,7 +42,7 @@ internal sealed class DbConnectionFactory : IDbConnectionFactory
         IDbConnection conn = Provider switch
         {
             DatabaseProvider.Sqlite => new SqliteConnection(_connectionString),
-            DatabaseProvider.SqlServer => new SqlConnection(_connectionString),
+            DatabaseProvider.Postgres => new NpgsqlConnection(_connectionString),
             _ => throw new NotSupportedException($"Provider no soportado: {Provider}")
         };
         conn.Open();
@@ -56,10 +57,10 @@ internal sealed class DbConnectionFactory : IDbConnectionFactory
                 var sqlite = new SqliteConnection(_connectionString);
                 await sqlite.OpenAsync(ct);
                 return sqlite;
-            case DatabaseProvider.SqlServer:
-                var sql = new SqlConnection(_connectionString);
-                await sql.OpenAsync(ct);
-                return sql;
+            case DatabaseProvider.Postgres:
+                var pg = new NpgsqlConnection(_connectionString);
+                await pg.OpenAsync(ct);
+                return pg;
             default:
                 throw new NotSupportedException($"Provider no soportado: {Provider}");
         }
